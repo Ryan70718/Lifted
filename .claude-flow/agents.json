@@ -1,0 +1,17 @@
+{
+  "agents": {
+    "hive-worker-1782138709433-9408": {
+      "agentId": "hive-worker-1782138709433-9408",
+      "agentType": "worker",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "role": "worker",
+        "hiveRole": "worker"
+      },
+      "createdAt": "2026-06-22T14:31:49.433Z",
+      "domain": "hive-mind"
+    }
+  }
+}

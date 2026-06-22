@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-06-22T18:46:04.965Z",
+  "projectRoot": "/Users/ryan/lifted-extracts-app",
+  "structure": {
+    "hasPackageJson": true,
+    "hasTsConfig": true,
+    "hasClaudeConfig": true,
+    "hasClaudeFlow": true
+  },
+  "scannedAt": 1782153964965
+}

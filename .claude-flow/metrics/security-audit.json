@@ -1,0 +1,73 @@
+{
+  "timestamp": "2026-06-22T18:42:22.413Z",
+  "mode": "headless",
+  "workerType": "audit",
+  "model": "haiku",
+  "durationMs": 42338,
+  "executionId": "audit_1782153700075_15oin9",
+  "success": true,
+  "findings": {
+    "vulnerabilities": [
+      {
+        "severity": "high",
+        "file": ".env.local",
+        "line": 1,
+        "description": "Hardcoded Supabase credentials exposed in version control. The .env.local file containing VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY is present in the repository. Although these are 'public' anon keys in Supabase architecture, they should not be committed to version control and should be accessed only from .gitignored files."
+      },
+      {
+        "severity": "high",
+        "file": ".env.localT",
+        "line": 1,
+        "description": "Orphaned/backup environment file containing secrets. The .env.localT file appears to be a duplicate/test file that should not exist and contains sensitive credential data. This indicates poor file cleanup and increases attack surface."
+      },
+      {
+        "severity": "medium",
+        "file": "src/hooks/useAuth.tsx",
+        "line": 16,
+        "description": "Hardcoded admin email address. The ADMIN_EMAIL constant is hardcoded in source code. While not a secret, this hardcoded configuration should be moved to environment variables or a configuration file for security and maintainability."
+      },
+      {
+        "severity": "medium",
+        "file": "src/lib/supabase.ts",
+        "line": 3,
+        "description": "Missing environment variable validation. The code does not validate that VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are actually set before creating the Supabase client. This could cause runtime errors or unexpected behavior if environment variables are missing."
+      },
+      {
+        "severity": "medium",
+        "file": "src/pages/Login.tsx",
+        "line": 59,
+        "description": "Error message exposure. The application displays the full authentication error message from Supabase to users. This could leak information about valid/invalid accounts or other sensitive details. Error messages should be generic."
+      },
+      {
+        "severity": "low",
+        "file": "vite.config.ts",
+        "line": 1,
+        "description": "Missing security headers configuration. No CORS, CSP, or other security headers are configured in the Vite configuration. Consider adding proper security headers middleware or configuration."
+      },
+      {
+        "severity": "low",
+        "file": "package.json",
+        "line": 1,
+        "description": "No security audit baseline. No `npm audit` or dependency vulnerability scanning is visible in the CI/build pipeline. Consider adding security scanning for dependencies."
+      }
+    ],
+    "riskScore": 72,
+    "recommendations": [
+      "**IMMEDIATE**: Remove .env.local and .env.localT from version control. Use `git rm --cached .env.local .env.localT` and ensure .gitignore prevents future commits.",
+      "**IMMEDIATE**: Rotate Supabase anon key - the exposed key is visible in this codebase and should be regenerated in Supabase dashboard.",
+      "Verify .gitignore is working: `.env*`, `.local`, and similar patterns should block all credential files.",
+      "Move ADMIN_EMAIL from hardcoded constant to environment variable (VITE_ADMIN_EMAIL) to follow configuration best practices.",
+      "Add environment variable validation in src/lib/supabase.ts - throw error if required env vars are missing at initialization.",
+      "Implement generic error messages on Login.tsx - avoid exposing Supabase error details to end users.",
+      "Add Supabase Row Level Security (RLS) policies verification - ensure database tables have proper RLS enabled to prevent unauthorized data access.",
+      "Add security headers via Vite plugin or middleware: CSP, X-Frame-Options, X-Content-Type-Options.",
+      "Implement CSRF protection tokens for form submissions.",
+      "Add `npm audit` and security scanning to your CI pipeline.",
+      "Review and enforce HTTPS-only communication in production.",
+      "Implement rate limiting on authentication endpoints.",
+      "Add logging and monitoring for failed authentication attempts."
+    ]
+  },
+  "rawOutputPreview": "Based on my analysis of the codebase, here's the security vulnerability report:\n\n```json\n{\n  \"vulnerabilities\": [\n    {\n      \"severity\": \"high\",\n      \"file\": \".env.local\",\n      \"line\": 1,\n      \"description\": \"Hardcoded Supabase credentials exposed in version control. The .env.local file containing VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY is present in the repository. Although these are 'public' anon keys in Supabase architecture, they should not be committed to version control and should be accessed only from .gitignored files.\"\n    },\n    {\n      \"severity\": \"high\",\n      \"file\": \".env.localT\",\n      \"line\": 1,\n      \"description\": \"Orphaned/backup environment file containing secrets. The .env.localT file appears to be a duplicate/test file that should not exist and contains sensitive credential data. This indicates poor file cleanup and increases attack surface.\"\n    },\n    {\n      \"severity\": \"medium\",\n      \"file\": \"src/hooks/useAuth.tsx\",\n      \"line\": 16,\n      \"description\": \"Hardcoded admin email address. The ADMIN_EMAIL constant is hardcoded in source code. While not a secret, this hardcoded configuration should be moved to environment variables or a configuration file for security and maintainability.\"\n    },\n    {\n      \"severity\": \"medium\",\n      \"file\": \"src/lib/supabase.ts\",\n      \"line\": 3,\n      \"description\": \"Missing environment variable validation. The code does not validate that VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are actually set before creating the Supabase client. This could cause runtime errors or unexpected behavior if environment variables are missing.\"\n    },\n    {\n      \"severity\": \"medium\",\n      \"file\": \"src/pages/Login.tsx\",\n      \"line\": 59,\n      \"description\": \"Error message exposure. The application displays the full authentication error message from Supabase to users. This could leak information about valid/invalid accounts or other sensitive details. Error messages should be generic.\"\n    },\n    {\n      \"severity",
+  "rawOutputLength": 4261
+}

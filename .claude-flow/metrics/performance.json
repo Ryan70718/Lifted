@@ -1,0 +1,167 @@
+{
+  "timestamp": "2026-06-22T18:41:49.693Z",
+  "mode": "headless",
+  "workerType": "optimize",
+  "model": "sonnet",
+  "durationMs": 63747,
+  "executionId": "optimize_1782153645946_ophtdo",
+  "success": true,
+  "findings": {
+    "sections": [
+      {
+        "title": "1. N+1-Like Query Patterns",
+        "content": "\n",
+        "level": 2
+      },
+      {
+        "title": "`repName` linear scan inside render loops",
+        "content": "Both `Leads.tsx` and `DispensaryMap.tsx` call `reps.find()` for every item rendered — O(n×m) total.\n\n```tsx\n// ❌ Both files — linear scan per item\nconst repName = (id: string | null) => reps.find(r => r.id === id)?.name ?? '—'\n```\n\n```tsx\n// ✅ Build a Map once after data loads\nconst repMap = useMemo(() => new Map(reps.map(r => [r.id, r.name])), [reps])\nconst repName = (id: string | null) => repMap.get(id ?? '') ?? '—'\n```\n\n",
+        "level": 3
+      },
+      {
+        "title": "Sequential awaits in `Routing.tsx:saveRoute`",
+        "content": "```tsx\n// ❌ Two round-trips in series\nconst { data: repData } = await supabase.from('reps').select('id').eq('user_id', user?.id).single()\nawait supabase.from('routes').insert({ rep_id: repData?.id ?? null, ... })\n```\nThe rep lookup should be cached at component mount (it never changes during a session), not re-fetched on every save.\n\n---\n\n",
+        "level": 3
+      },
+      {
+        "title": "2. Unnecessary Re-renders",
+        "content": "\n",
+        "level": 2
+      },
+      {
+        "title": "`byStage` in `Leads.tsx` — recomputed every render",
+        "content": "```tsx\n// ❌ Runs on every render including unrelated state changes (showModal, saving)\nconst byStage = STAGES.reduce<Record<Stage, Lead[]>>((acc, s) => {\n  acc[s.value] = leads.filter(l => l.stage === s.value)\n  return acc\n}, {} as Record<Stage, Lead[]>)\n```\n\n```tsx\n// ✅ Single-pass with useMemo\nconst byStage = useMemo(() => {\n  const acc: Record<Stage, Lead[]> = { cold: [], sampled: [], first_order: [], repeat: [] }\n  for (const lead of leads) acc[lead.stage].push(lead)\n  return acc\n}, [leads])\n```\n\n",
+        "level": 3
+      },
+      {
+        "title": "`filtered` stores in `DispensaryMap.tsx` — recomputed every render",
+        "content": "```tsx\n// ❌ Runs on every render\nconst filtered = filterRegion ? stores.filter(s => s.region === filterRegion) : stores\n```\n\n```tsx\n// ✅\nconst filtered = useMemo(\n  () => filterRegion ? stores.filter(s => s.region === filterRegion) : stores,\n  [stores, filterRegion]\n)\n```\n\n",
+        "level": 3
+      },
+      {
+        "title": "`AmbientBackground.tsx` — new style objects every render",
+        "content": "```tsx\n// ❌ Inline objects create new references, forcing reconciliation\nstyle={{ background: 'radial-gradient(...)', top: '-10%', left: '-5%', animation: 'drift1 18s...' }}\n```\nMove these to a CSS class or extract them as module-level constants so they're stable references.\n\n---\n\n",
+        "level": 3
+      },
+      {
+        "title": "3. Caching Opportunities",
+        "content": "\n",
+        "level": 2
+      },
+      {
+        "title": "No cross-navigation data cache",
+        "content": "Every page navigation triggers fresh Supabase fetches. The `reps` list is loaded in at least 4 pages (Leads, DispensaryMap, Reps, Dashboard). A lightweight context or React Query would eliminate this:\n\n```tsx\n// Simple shared context (no extra deps)\nconst RepsContext = createContext<Rep[]>([])\nexport function RepsProvider({ children }) {\n  const [reps, setReps] = useState<Rep[]>([])\n  useEffect(() => {\n    supabase.from('reps').select('*').order('name').then(({ data }) => setReps(data ?? []))\n  }, [])\n  return <RepsContext.Provider value={reps}>{children}</RepsContext.Provider>\n}\n```\n\n",
+        "level": 3
+      },
+      {
+        "title": "`CalcResult` in `Calculator.tsx` — pure computation, no memoization",
+        "content": "```tsx\n// ❌ Recalculates on every parent render (slider drag triggers many renders)\nfunction CalcResult({ units, tier, rate, hasBonus, storeCount }) {\n  const price = tier === 'list' ? LIST_PRICE : FLOOR_PRICE\n  const gross = units * price\n  // ...\n```\n\n```tsx\n// ✅ Memoize the component since all inputs are primitives\nexport const CalcResult = memo(function CalcResult({ units, tier, rate, hasBonus, storeCount }) { ... })\n```\n\n---\n\n",
+        "level": 3
+      },
+      {
+        "title": "4. Memory Leaks",
+        "content": "\n",
+        "level": 2
+      },
+      {
+        "title": "`setTimeout` without cleanup in `Routing.tsx`",
+        "content": "```tsx\n// ❌ If component unmounts in <2s, sets state on unmounted component\nconst saveRoute = async () => {\n  // ...\n  setSaved(true)\n  setTimeout(() => setSaved(false), 2000)  // no cleanup\n}\n```\n\n```tsx\n// ✅ Use a ref to track and cancel the timer\nconst timerRef = useRef<ReturnType<typeof setTimeout>>()\n\nuseEffect(() => () => clearTimeout(timerRef.current), [])\n\nconst saveRoute = async () => {\n  // ...\n  setSaved(true)\n  timerRef.current = setTimeout(() => setSaved(false), 2000)\n}\n```\n\n",
+        "level": 3
+      },
+      {
+        "title": "CSS animations in `AmbientBackground` run unconditionally",
+        "content": "The three `animation` blobs run GPU compositing indefinitely, even on pages with no background visible behind a modal. If `AmbientBackground` is inside `Layout`, this is fine; if it's also in `Login`, you have two instances running simultaneously. Verify they're not double-mounted.\n\n---\n\n",
+        "level": 3
+      },
+      {
+        "title": "5. Redundant Computations",
+        "content": "\n",
+        "level": 2
+      },
+      {
+        "title": "`byStage` makes 4 passes over `leads` array",
+        "content": "Already shown above — the `STAGES.reduce` calls `leads.filter()` once per stage. A single `for...of` pass is 4× more efficient.\n\n",
+        "level": 3
+      },
+      {
+        "title": "`BATCH_EXPIRES` / `BATCH_CODE` duplicated across files",
+        "content": "`Dashboard.tsx` and `Inventory.tsx` both hardcode the same constants. Not a runtime perf issue, but a maintenance hazard — extract to `src/lib/constants.ts`.\n\n",
+        "level": 3
+      },
+      {
+        "title": "`daysUntil` called with a string literal on every render in `Inventory.tsx`",
+        "content": "```tsx\n// ❌ New Date parse on every render\nconst daysLeft = daysUntil(BATCH_EXPIRES)\n```\n\n```tsx\n// ✅ Stable since BATCH_EXPIRES is a constant\nconst daysLeft = useMemo(() => daysUntil(BATCH_EXPIRES), [])\n```\n\n---\n\n",
+        "level": 3
+      },
+      {
+        "title": "Priority Order",
+        "content": "| Issue | Impact | Effort |\n|---|---|---|\n| `repName` O(n) scan in render | Medium (scales with store count) | Low |\n| `byStage` multi-pass filter | Low-Medium | Low |\n| `setTimeout` without cleanup | High (silent bug) | Low |\n| `filtered` stores without `useMemo` | Low | Low |\n| Shared `reps` cache | Medium (network RTTs) | Medium |\n| `CalcResult` memo | Low (local calc) | Low |\n\nThe `setTimeout` cleanup is the only actual bug — the rest are optimizations.",
+        "level": 2
+      }
+    ],
+    "codeBlocks": [
+      {
+        "language": "tsx",
+        "code": "// ❌ Both files — linear scan per item\nconst repName = (id: string | null) => reps.find(r => r.id === id)?.name ?? '—'"
+      },
+      {
+        "language": "tsx",
+        "code": "// ✅ Build a Map once after data loads\nconst repMap = useMemo(() => new Map(reps.map(r => [r.id, r.name])), [reps])\nconst repName = (id: string | null) => repMap.get(id ?? '') ?? '—'"
+      },
+      {
+        "language": "tsx",
+        "code": "// ❌ Two round-trips in series\nconst { data: repData } = await supabase.from('reps').select('id').eq('user_id', user?.id).single()\nawait supabase.from('routes').insert({ rep_id: repData?.id ?? null, ... })"
+      },
+      {
+        "language": "tsx",
+        "code": "// ❌ Runs on every render including unrelated state changes (showModal, saving)\nconst byStage = STAGES.reduce<Record<Stage, Lead[]>>((acc, s) => {\n  acc[s.value] = leads.filter(l => l.stage === s.value)\n  return acc\n}, {} as Record<Stage, Lead[]>)"
+      },
+      {
+        "language": "tsx",
+        "code": "// ✅ Single-pass with useMemo\nconst byStage = useMemo(() => {\n  const acc: Record<Stage, Lead[]> = { cold: [], sampled: [], first_order: [], repeat: [] }\n  for (const lead of leads) acc[lead.stage].push(lead)\n  return acc\n}, [leads])"
+      },
+      {
+        "language": "tsx",
+        "code": "// ❌ Runs on every render\nconst filtered = filterRegion ? stores.filter(s => s.region === filterRegion) : stores"
+      },
+      {
+        "language": "tsx",
+        "code": "// ✅\nconst filtered = useMemo(\n  () => filterRegion ? stores.filter(s => s.region === filterRegion) : stores,\n  [stores, filterRegion]\n)"
+      },
+      {
+        "language": "tsx",
+        "code": "// ❌ Inline objects create new references, forcing reconciliation\nstyle={{ background: 'radial-gradient(...)', top: '-10%', left: '-5%', animation: 'drift1 18s...' }}"
+      },
+      {
+        "language": "tsx",
+        "code": "// Simple shared context (no extra deps)\nconst RepsContext = createContext<Rep[]>([])\nexport function RepsProvider({ children }) {\n  const [reps, setReps] = useState<Rep[]>([])\n  useEffect(() => {\n    supabase.from('reps').select('*').order('name').then(({ data }) => setReps(data ?? []))\n  }, [])\n  return <RepsContext.Provider value={reps}>{children}</RepsContext.Provider>\n}"
+      },
+      {
+        "language": "tsx",
+        "code": "// ❌ Recalculates on every parent render (slider drag triggers many renders)\nfunction CalcResult({ units, tier, rate, hasBonus, storeCount }) {\n  const price = tier === 'list' ? LIST_PRICE : FLOOR_PRICE\n  const gross = units * price\n  // ..."
+      },
+      {
+        "language": "tsx",
+        "code": "// ✅ Memoize the component since all inputs are primitives\nexport const CalcResult = memo(function CalcResult({ units, tier, rate, hasBonus, storeCount }) { ... })"
+      },
+      {
+        "language": "tsx",
+        "code": "// ❌ If component unmounts in <2s, sets state on unmounted component\nconst saveRoute = async () => {\n  // ...\n  setSaved(true)\n  setTimeout(() => setSaved(false), 2000)  // no cleanup\n}"
+      },
+      {
+        "language": "tsx",
+        "code": "// ✅ Use a ref to track and cancel the timer\nconst timerRef = useRef<ReturnType<typeof setTimeout>>()\n\nuseEffect(() => () => clearTimeout(timerRef.current), [])\n\nconst saveRoute = async () => {\n  // ...\n  setSaved(true)\n  timerRef.current = setTimeout(() => setSaved(false), 2000)\n}"
+      },
+      {
+        "language": "tsx",
+        "code": "// ❌ New Date parse on every render\nconst daysLeft = daysUntil(BATCH_EXPIRES)"
+      },
+      {
+        "language": "tsx",
+        "code": "// ✅ Stable since BATCH_EXPIRES is a constant\nconst daysLeft = useMemo(() => daysUntil(BATCH_EXPIRES), [])"
+      }
+    ]
+  },
+  "rawOutputPreview": "Here's the performance analysis across all five categories with code examples:\n\n---\n\n## 1. N+1-Like Query Patterns\n\n### `repName` linear scan inside render loops\nBoth `Leads.tsx` and `DispensaryMap.tsx` call `reps.find()` for every item rendered — O(n×m) total.\n\n```tsx\n// ❌ Both files — linear scan per item\nconst repName = (id: string | null) => reps.find(r => r.id === id)?.name ?? '—'\n```\n\n```tsx\n// ✅ Build a Map once after data loads\nconst repMap = useMemo(() => new Map(reps.map(r => [r.id, r.name])), [reps])\nconst repName = (id: string | null) => repMap.get(id ?? '') ?? '—'\n```\n\n### Sequential awaits in `Routing.tsx:saveRoute`\n```tsx\n// ❌ Two round-trips in series\nconst { data: repData } = await supabase.from('reps').select('id').eq('user_id', user?.id).single()\nawait supabase.from('routes').insert({ rep_id: repData?.id ?? null, ... })\n```\nThe rep lookup should be cached at component mount (it never changes during a session), not re-fetched on every save.\n\n---\n\n## 2. Unnecessary Re-renders\n\n### `byStage` in `Leads.tsx` — recomputed every render\n```tsx\n// ❌ Runs on every render including unrelated state changes (showModal, saving)\nconst byStage = STAGES.reduce<Record<Stage, Lead[]>>((acc, s) => {\n  acc[s.value] = leads.filter(l => l.stage === s.value)\n  return acc\n}, {} as Record<Stage, Lead[]>)\n```\n\n```tsx\n// ✅ Single-pass with useMemo\nconst byStage = useMemo(() => {\n  const acc: Record<Stage, Lead[]> = { cold: [], sampled: [], first_order: [], repeat: [] }\n  for (const lead of leads) acc[lead.stage].push(lead)\n  return acc\n}, [leads])\n```\n\n### `filtered` stores in `DispensaryMap.tsx` — recomputed every render\n```tsx\n// ❌ Runs on every render\nconst filtered = filterRegion ? stores.filter(s => s.region === filterRegion) : stores\n```\n\n```tsx\n// ✅\nconst filtered = useMemo(\n  () => filterRegion ? stores.filter(s => s.region === filterRegion) : stores,\n  [stores, filterRegion]\n)\n```\n\n### `AmbientBackground.tsx` — new style objects every render\n```tsx\n// ❌ Inline objec",
+  "rawOutputLength": 5535
+}
