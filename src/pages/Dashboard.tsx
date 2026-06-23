@@ -4,6 +4,7 @@ import { GlassCard } from '../components/ui/GlassCard'
 import { Badge } from '../components/ui/Badge'
 import type { LucideIcon } from 'lucide-react'
 import { AlertTriangle, TrendingUp, Package, Store, Users, Clock } from 'lucide-react'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 
 type Stats = {
   activeAccounts: number
@@ -13,6 +14,8 @@ type Stats = {
   storesNeedingReorder: number
   storesOverdueVisit: number
 }
+
+type ChartPoint = { month: string; revenue: number; margin: number }
 
 const BATCH_EXPIRES = '2027-03-31'
 const BATCH_CODE = 'VP20260331'
@@ -53,16 +56,18 @@ export function Dashboard() {
     storesOverdueVisit: 0,
   })
   const [topReps, setTopReps] = useState<{ name: string; bonus: number; units: number }[]>([])
+  const [chartData, setChartData] = useState<ChartPoint[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function load() {
       const now = new Date()
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+      const twelveMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 11, 1).toISOString()
 
       const [storesRes, ordersRes, repsRes] = await Promise.all([
         supabase.from('stores').select('id, status, next_reorder_date, last_order_date'),
-        supabase.from('orders').select('units, price_per_unit, rep_id, order_date').gte('order_date', monthStart),
+        supabase.from('orders').select('units, price_per_unit, rep_id, order_date').gte('order_date', twelveMonthsAgo),
         supabase.from('reps').select('id, name'),
       ])
 
@@ -70,10 +75,30 @@ export function Dashboard() {
       const orders = ordersRes.data ?? []
       const reps = repsRes.data ?? []
 
+      const thisMonthOrders = orders.filter(o => o.order_date >= monthStart)
       const activeAccounts = stores.filter(s => s.status === 'active').length
-      const unitsSoldThisMonth = orders.reduce((sum, o) => sum + (o.units || 0), 0)
-      const grossRevenue = orders.reduce((sum, o) => sum + (o.units * o.price_per_unit), 0)
+      const unitsSoldThisMonth = thisMonthOrders.reduce((sum, o) => sum + (o.units || 0), 0)
+      const grossRevenue = thisMonthOrders.reduce((sum, o) => sum + (o.units * o.price_per_unit), 0)
       const netMarginThisMonth = grossRevenue * 0.62 // approx after commissions
+
+      // Build monthly chart data from all 12 months of orders
+      const byMonth: Record<string, { revenue: number; margin: number }> = {}
+      orders.forEach(o => {
+        const key = o.order_date.slice(0, 7)
+        if (!byMonth[key]) byMonth[key] = { revenue: 0, margin: 0 }
+        const rev = o.units * o.price_per_unit
+        byMonth[key].revenue += rev
+        byMonth[key].margin += rev * 0.62
+      })
+      setChartData(
+        Object.entries(byMonth)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([key, v]) => ({
+            month: new Date(key + '-15').toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+            revenue: Math.round(v.revenue),
+            margin: Math.round(v.margin),
+          }))
+      )
 
       const today = new Date()
       const storesNeedingReorder = stores.filter(s => {
@@ -87,9 +112,9 @@ export function Dashboard() {
         return s.last_order_date < thirtyDaysAgo
       }).length
 
-      // Aggregate units by rep
+      // Aggregate units by rep (this month only)
       const repUnits: Record<string, number> = {}
-      orders.forEach(o => {
+      thisMonthOrders.forEach(o => {
         repUnits[o.rep_id] = (repUnits[o.rep_id] || 0) + o.units
       })
       const sortedReps = reps
@@ -134,6 +159,34 @@ export function Dashboard() {
             <StatCard icon={AlertTriangle} label="Overdue visits" value={stats.storesOverdueVisit} sub="30+ days since contact" />
             <StatCard icon={Package} label="Batch expires" value={`${daysLeft}d`} sub={BATCH_CODE} />
           </div>
+
+          <GlassCard className="p-5 mb-4">
+            <h2 className="text-sm font-semibold text-white/80 mb-4 flex items-center gap-2">
+              <TrendingUp size={14} />
+              Revenue &amp; Margin — Last 12 Months
+            </h2>
+            {chartData.length === 0 ? (
+              <div className="h-48 flex items-center justify-center">
+                <p className="text-white/25 text-xs">No order data yet — chart will populate once orders are entered</p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                  <XAxis dataKey="month" tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <YAxis tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 11 }} axisLine={false} tickLine={false} width={48} />
+                  <Tooltip
+                    contentStyle={{ background: 'rgba(15,15,25,0.92)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, fontSize: 12 }}
+                    labelStyle={{ color: 'rgba(255,255,255,0.7)' }}
+                    formatter={(value: number) => [`$${value.toLocaleString()}`, undefined]}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }} />
+                  <Bar dataKey="revenue" name="Gross Revenue" fill="rgba(99,102,241,0.7)" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="margin" name="Net Margin" fill="rgba(34,197,94,0.6)" radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </GlassCard>
 
           <div className="grid md:grid-cols-2 gap-4">
             <GlassCard className="p-5">

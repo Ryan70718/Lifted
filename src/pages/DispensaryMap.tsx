@@ -5,6 +5,7 @@ import { supabase, type Store, type Rep } from '../lib/supabase'
 import { GlassCard } from '../components/ui/GlassCard'
 import { Badge, statusBadgeVariant, creditVariant } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
+import { Search } from 'lucide-react'
 
 type ColorMode = 'status' | 'credit'
 
@@ -30,6 +31,7 @@ export function DispensaryMap() {
   const [reps, setReps] = useState<Rep[]>([])
   const [colorMode, setColorMode] = useState<ColorMode>('status')
   const [filterRegion, setFilterRegion] = useState('')
+  const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<Store | null>(null)
   const [editNotes, setEditNotes] = useState('')
   const [editCredit, setEditCredit] = useState<number | null>(null)
@@ -47,7 +49,10 @@ export function DispensaryMap() {
     }
   }, [selected])
 
-  const filtered = filterRegion ? stores.filter(s => s.region === filterRegion) : stores
+  const q = search.toLowerCase()
+  const filtered = stores
+    .filter(s => !filterRegion || s.region === filterRegion)
+    .filter(s => !q || s.name.toLowerCase().includes(q))
 
   const markerColor = (s: Store) => {
     if (colorMode === 'status') return STATUS_COLORS[s.status] ?? '#6b7280'
@@ -72,6 +77,16 @@ export function DispensaryMap() {
           <p className="text-white/40 text-sm mt-1">{filtered.length} stores</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative">
+            <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search stores…"
+              className="pl-7 pr-3 py-1.5 rounded-xl bg-white/[0.06] border border-white/[0.08] text-white text-xs placeholder-white/25 focus:outline-none focus:border-indigo-500/60 transition-colors w-44"
+            />
+          </div>
           <div className="flex rounded-xl overflow-hidden border border-white/[0.08]">
             {(['status', 'credit'] as ColorMode[]).map(m => (
               <button

@@ -3,7 +3,7 @@ import { supabase, type Rep, type ActivityLog } from '../lib/supabase'
 import { GlassCard } from '../components/ui/GlassCard'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
-import { Plus, Phone, Trophy, X, ChevronDown, ChevronUp } from 'lucide-react'
+import { Plus, Phone, Trophy, X, ChevronDown, ChevronUp, Search } from 'lucide-react'
 
 type RepForm = Omit<Rep, 'id' | 'created_at' | 'user_id'>
 
@@ -19,14 +19,22 @@ const emptyForm: RepForm = {
 function RepModal({ rep, onClose, onSave }: { rep?: Rep; onClose: () => void; onSave: () => void }) {
   const [form, setForm] = useState<RepForm>(rep ? { ...rep } : emptyForm)
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setSaving(true)
+    setSaveError(null)
     if (rep) {
       await supabase.from('reps').update(form).eq('id', rep.id)
     } else {
-      await supabase.from('reps').insert(form)
+      const { data: { user } } = await supabase.auth.getUser()
+      const { error } = await supabase.from('reps').insert({ ...form, user_id: user?.id ?? null })
+      if (error) {
+        setSaveError(error.message)
+        setSaving(false)
+        return
+      }
     }
     setSaving(false)
     onSave()
@@ -72,6 +80,9 @@ function RepModal({ rep, onClose, onSave }: { rep?: Rep; onClose: () => void; on
               <option value="hybrid">Hybrid</option>
             </select>
           </div>
+          {saveError && (
+            <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{saveError}</p>
+          )}
           <div className="flex gap-2 pt-2">
             <Button type="button" variant="ghost" onClick={onClose} className="flex-1">Cancel</Button>
             <Button type="submit" variant="primary" disabled={saving} className="flex-1">
@@ -141,6 +152,7 @@ export function Reps() {
   const [showModal, setShowModal] = useState(false)
   const [editRep, setEditRep] = useState<Rep | undefined>()
   const [expandedRep, setExpandedRep] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
 
   const load = async () => {
     const { data } = await supabase.from('reps').select('*').order('name')
@@ -150,21 +162,37 @@ export function Reps() {
 
   useEffect(() => { load() }, [])
 
+  const q = search.toLowerCase()
+  const visible = reps.filter(r =>
+    !q || r.name.toLowerCase().includes(q) || r.territory.toLowerCase().includes(q)
+  )
+
   return (
     <div>
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-semibold text-white">Sales Reps</h1>
-          <p className="text-white/40 text-sm mt-1">{reps.length} reps</p>
+          <p className="text-white/40 text-sm mt-1">{visible.length} reps</p>
         </div>
         <Button variant="primary" onClick={() => { setEditRep(undefined); setShowModal(true) }}>
           <Plus size={14} /> Add rep
         </Button>
       </div>
 
+      <div className="relative mb-6">
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
+        <input
+          type="text"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search by name or territory…"
+          className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-white/[0.06] border border-white/[0.1] text-white text-sm placeholder-white/25 focus:outline-none focus:border-indigo-500/60 transition-colors"
+        />
+      </div>
+
       {loading ? <div className="text-white/30 text-sm">Loading…</div> : (
         <div className="grid md:grid-cols-2 gap-4">
-          {reps.map(rep => (
+          {visible.map(rep => (
             <GlassCard key={rep.id} className="p-5">
               <div className="flex items-start justify-between">
                 <div>
@@ -201,9 +229,11 @@ export function Reps() {
               {expandedRep === rep.id && <ActivityPanel repId={rep.id} repName={rep.name} />}
             </GlassCard>
           ))}
-          {reps.length === 0 && (
+          {visible.length === 0 && (
             <GlassCard className="p-8 text-center col-span-2">
-              <p className="text-white/30 text-sm">No reps yet. Add your first rep to get started.</p>
+              <p className="text-white/30 text-sm">
+                {reps.length === 0 ? 'No reps yet. Add your first rep to get started.' : 'No reps match your search.'}
+              </p>
             </GlassCard>
           )}
         </div>
