@@ -11,6 +11,7 @@ import { Timeline } from './pages/Timeline'
 import { Calculator } from './pages/Calculator'
 import { Compliance } from './pages/Compliance'
 import { Leads } from './pages/Leads'
+import { AdminBackfill } from './pages/AdminBackfill'
 
 function AppRoutes() {
   const { user, loading } = useAuth()
@@ -37,6 +38,7 @@ function AppRoutes() {
         <Route path="/calculator" element={<Calculator />} />
         <Route path="/compliance" element={<Compliance />} />
         <Route path="/leads" element={<Leads />} />
+        <Route path="/admin/backfill" element={<AdminBackfill />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>
